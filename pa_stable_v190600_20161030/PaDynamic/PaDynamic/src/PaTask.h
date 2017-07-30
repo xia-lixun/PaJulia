@@ -10,3 +10,4 @@
 
 
 extern "C" PA_DYNAMIC_API int play(const char * path, int sample_rate);
+extern "C" PA_DYNAMIC_API int record(const char * path, int sample_rate, int channels, double duration, int bits);
