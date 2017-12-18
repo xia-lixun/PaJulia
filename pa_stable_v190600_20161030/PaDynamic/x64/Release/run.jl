@@ -18,3 +18,8 @@ assert(convert(Int64,fs_) == fs)
 
 impulse = decode_impulse(ess, f0, f1, ess_res[:,1])
 plot(impulse, size=(1200,800))
+
+
+# extern "C" PA_DYNAMIC_API int play(const char * path, int sample_rate);
+# extern "C" PA_DYNAMIC_API int record(const char * path, int sample_rate, int channels, double duration, int bits);
+# extern "C" PA_DYNAMIC_API int playrecord(const char * path_play, const char * path_record, int sample_rate, int channels_record, int bits_record);
