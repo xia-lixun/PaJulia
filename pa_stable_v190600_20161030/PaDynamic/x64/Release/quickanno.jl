@@ -13,11 +13,14 @@ include("D:/Git/dnn/src/julia/data.jl")
 #                                                       /n.wav
 function fragmentation(path::String, block::Float64)
     
+    p16mono = joinpath(tempdir(), "QuickAnno16mono")
     p16 = joinpath(tempdir(), "QuickAnno16")
     p48 = joinpath(tempdir(), "QuickAnno48")
+    rm(p16mono, force=true, recursive=true)
     rm(p16, force=true, recursive=true)
     rm(p48, force=true, recursive=true)
     mkpath(p16)
+    mkpath(p16mono)
 
     decomp = Dict{String,Array{String,1}}()
     files = DATA.list(path, t=".wav")
@@ -29,14 +32,18 @@ function fragmentation(path::String, block::Float64)
 
         local bn = basename(j)
         local ps = joinpath(p16,bn)
+        local psm = joinpath(p16mono,bn)
         mkdir(ps)
+        mkdir(psm)
 
         local q = div(n,sps) - 1
         decomp[bn] = ["$k.wav" for k = 0:q]
 
         for k = 0:q-1
+            WAV.wavwrite(view(x,k*sps+1:(k+1)*sps,:), joinpath(psm,"$k.wav"), Fs=sr, nbits=32)
             WAV.wavwrite(hcat(view(x,k*sps+1:(k+1)*sps,:), view(x,k*sps+1:(k+1)*sps,:)), joinpath(ps,"$k.wav"), Fs=sr, nbits=32)
         end
+        WAV.wavwrite(view(x,q*sps+1:n,:), joinpath(psm,"$q.wav"), Fs=sr, nbits=32)
         WAV.wavwrite(hcat(view(x,q*sps+1:n,:),view(x,q*sps+1:n,:)), joinpath(ps,"$q.wav"), Fs=sr, nbits=32)
     end
 
@@ -46,12 +53,19 @@ function fragmentation(path::String, block::Float64)
 end
 
 
+# @16000 sps
+function vad(clip::String)
+    rm("vstcla_smvad.txt", force=true)
+    try
+        run(`vad.exe $clip vstfea.txt fileLabel_Train_1000_16000.model vstcla.txt 256 512`)
+    catch
+    end
+    return mean(readdlm("vstcla_smvad.txt"))
+end
 
 
 
-
-
-function label!(decomp::Dict{String,Array{String,1}})
+function label(dp::Dict{String,Array{String,1}})
     
     function state_play(clip::String)
         ccall((:play, "PaDynamic"), Int32, (Ptr{UInt8}, Int32), clip, 48000)
@@ -62,34 +76,44 @@ function label!(decomp::Dict{String,Array{String,1}})
         return state_play(clip)
     end
 
-    p = joinpath(tempdir(), "QuickAnno48")
+    p16 = joinpath(tempdir(), "QuickAnno16mono")
+    p48 = joinpath(tempdir(), "QuickAnno48")
+
+    # priority via vad
+    dpp = Dict{String,Array{Tuple{String,Float64},1}}()
+    for i in keys(dp)
+        dpp[i] = [(j,vad(joinpath(p16,i,j))) for j in dp[i]]
+        sort!(dpp[i], by=x->x[2], rev=true)
+    end
+
+    # info(dp)
+    # info(dpp)
 
     maxdepth = 0
-    for i in keys(decomp)
-        length(decomp[i]) > maxdepth && (maxdepth = length(decomp[i]))
+    for i in keys(dp)
+        length(dp[i]) > maxdepth && (maxdepth = length(dp[i]))
     end
     info("max depth: $maxdepth")
 
-    for i = 0:maxdepth-1
-        for j in keys(decomp)
-            if in("$i.wav",decomp[j])
-                play = joinpath(p,j,"$i.wav")
-                flag = state_play(play)
-                flag && (pop!(decomp,j);info("$j spotted"))
+    for i = 1:maxdepth
+        for j in keys(dpp)
+            if i <= length(dpp[j])
+                flag = state_play(joinpath(p48,j,dpp[j][i][1]))
+                flag && (pop!(dpp,j);info("$j spotted"))
             end
         end
     end
-    nothing
+    dpp
 end
 
 
 
 function quickanno(path::String, block::Float64)
     dp = fragmentation(path, block)
-    label!(dp)
+    dpp = label(dp)
     dst = joinpath(path,"nospeech")
     mkpath(dst)
-    for i in keys(dp)
+    for i in keys(dpp)
         mv(joinpath(path,i), joinpath(dst,i), remove_destination=true)
     end
     nothing
