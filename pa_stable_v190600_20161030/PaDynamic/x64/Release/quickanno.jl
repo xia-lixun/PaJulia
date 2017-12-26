@@ -1,7 +1,10 @@
 module QUICKANNO
 
 import WAV
+import HDF5
+
 include("D:/Git/dnn/src/julia/data.jl")
+include("D:/Git/dnn/src/julia/forward.jl")
 
 
 # path: path contain wav files to be labeled, no sub folders are allowed
@@ -65,8 +68,34 @@ end
 
 
 
+function vad(
+    clip::String,
+    nn::FORWARD.TF{Float32},
+    nfft::Int64, 
+    nhp::Int64,
+    ntxt::Int64, 
+    nat::Int64,
+    μ::Array{Float32,1}, 
+    σ::Array{Float32,1}
+    )
+    x, sr = WAV.wavread(clip)
+    x = Float32.(x)
+    bm = FORWARD.bm_inference(nn, view(x,:,1), nfft, nhp, ntxt, nat, μ, σ)
+    mean(bm)
+end
+
+
+
+
+
 function label(dp::Dict{String,Array{String,1}})
     
+    nn = FORWARD.TF{Float32}("D:\\5-Workspace\\Mix\\model\\model-20171225\\specification-20171225.mat")
+    μ = HDF5.h5read("D:\\5-Workspace\\Mix\\model\\model-20171225\\stat.h5", "mu")
+    σ = HDF5.h5read("D:\\5-Workspace\\Mix\\model\\model-20171225\\stat.h5", "std")
+    μ = Float32.(μ)
+    σ = Float32.(σ)
+
     function state_play(clip::String)
         ccall((:play, "PaDynamic"), Int32, (Ptr{UInt8}, Int32), clip, 48000)
         info("Guess what?")
@@ -82,12 +111,11 @@ function label(dp::Dict{String,Array{String,1}})
     # priority via vad
     dpp = Dict{String,Array{Tuple{String,Float64},1}}()
     for i in keys(dp)
-        dpp[i] = [(j,vad(joinpath(p16,i,j))) for j in dp[i]]
+        # dpp[i] = [(j,vad(joinpath(p16,i,j))) for j in dp[i]]
+        dpp[i] = [(j,vad(joinpath(p16,i,j), nn, 512, 128, 23, 14, μ, σ)) for j in dp[i]]
         sort!(dpp[i], by=x->x[2], rev=true)
     end
 
-    # info(dp)
-    # info(dpp)
 
     maxdepth = 0
     for i in keys(dp)
