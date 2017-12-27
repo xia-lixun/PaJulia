@@ -5,6 +5,7 @@ import HDF5
 
 include("D:/Git/dnn/src/julia/data.jl")
 include("D:/Git/dnn/src/julia/forward.jl")
+include("D:/Git/dnn/src/julia/ui.jl")
 
 
 # path: path contain wav files to be labeled, no sub folders are allowed
@@ -96,13 +97,13 @@ function label(dp::Dict{String,Array{String,1}})
     μ = Float32.(μ)
     σ = Float32.(σ)
 
-    function state_play(clip::String)
+    function state_play(clip::String, depth)
         ccall((:play, "PaDynamic"), Int32, (Ptr{UInt8}, Int32), clip, 48000)
-        info("Guess what?")
+        info("[$depth/$maxdepth] Sounds like speech? [y/n/REPLAY]")
         cmd = lowercase(readline(STDIN))
         cmd == "y" && return true
         cmd == "n" && return false
-        return state_play(clip)
+        return state_play(clip, depth)
     end
 
     p16 = joinpath(tempdir(), "QuickAnno16mono")
@@ -110,10 +111,13 @@ function label(dp::Dict{String,Array{String,1}})
 
     # priority via vad
     dpp = Dict{String,Array{Tuple{String,Float64},1}}()
-    for i in keys(dp)
+    n = length(dp)
+    pr = UI.Progress(10)
+    for (k,i) in enumerate(keys(dp))
         # dpp[i] = [(j,vad(joinpath(p16,i,j))) for j in dp[i]]
         dpp[i] = [(j,vad(joinpath(p16,i,j), nn, 512, 128, 23, 14, μ, σ)) for j in dp[i]]
         sort!(dpp[i], by=x->x[2], rev=true)
+        UI.update(pr, k, n)
     end
 
 
@@ -126,10 +130,12 @@ function label(dp::Dict{String,Array{String,1}})
     for i = 1:maxdepth
         for j in keys(dpp)
             if i <= length(dpp[j])
-                flag = state_play(joinpath(p48,j,dpp[j][i][1]))
+                flag = state_play(joinpath(p48,j,dpp[j][i][1]),i)
                 flag && (pop!(dpp,j);info("$j spotted"))
             end
         end
+        info("Layer $i complete. Proceed? [no/YES]")
+        lowercase(readline(STDIN)) == "no" && break
     end
     dpp
 end
