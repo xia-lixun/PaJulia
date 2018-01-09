@@ -33,6 +33,7 @@ function fragmentation(path::String, block::Float64)
         local (x,sr) = WAV.wavread(j)
         local n = size(x,1)
         local sps::Int64 = Int64(round(sr * block))
+        n < 2sps && continue
 
         local bn = basename(j)
         local ps = joinpath(p16,bn)
@@ -91,9 +92,9 @@ end
 
 function label(dp::Dict{String,Array{String,1}})
     
-    nn = FORWARD.TF{Float32}("D:\\5-Workspace\\Mix\\model\\model-20171225\\specification-20171225.mat")
-    μ = HDF5.h5read("D:\\5-Workspace\\Mix\\model\\model-20171225\\stat.h5", "mu")
-    σ = HDF5.h5read("D:\\5-Workspace\\Mix\\model\\model-20171225\\stat.h5", "std")
+    nn = FORWARD.TF{Float32}("D:\\5-Workspace\\1-Model\\20180105\\model-20180105.mat")
+    μ = HDF5.h5read("D:\\5-Workspace\\1-Model\\20180105\\stat.h5", "mu")
+    σ = HDF5.h5read("D:\\5-Workspace\\1-Model\\20180105\\stat.h5", "std")
     μ = Float32.(μ)
     σ = Float32.(σ)
 
@@ -142,7 +143,39 @@ end
 
 
 
+
+function current_set(path::String)
+    uid = Set{String}()
+    google = DATA.list(path, t = ".wav")
+
+    for i in google
+        b = split(basename(i),'+')
+        push!(uid, String(b[2][1:end-4]))
+    end
+    uid
+end
+
+
+
+
+
+
+
+
 function quickanno(path::String, block::Float64)
+
+    uid = current_set("D:\\5-Workspace\\GoogleAudioSet\\")
+    subset = DATA.list(path, t=".wav")
+    for i in subset
+        b = split(basename(i),'+')
+        if in(String(b[2][1:end-4]),uid)
+            rm(i)
+            info("duplicate $i")
+        end
+    end
+    info("press any key to continue...")
+    cmd = lowercase(readline(STDIN))
+
     dp = fragmentation(path, block)
     dpp = label(dp)
     dst = joinpath(path,"nospeech")
