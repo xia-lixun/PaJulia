@@ -17,9 +17,10 @@ include("D:/Git/dnn/src/julia/ui.jl")
 #                                                       /n.wav
 function fragmentation(path::String, block::Float64)
     
-    p16mono = joinpath(tempdir(), "QuickAnno16mono")
-    p16 = joinpath(tempdir(), "QuickAnno16")
-    p48 = joinpath(tempdir(), "QuickAnno48")
+    p16mono = joinpath(tempdir(), randstring(rand(4:32)))
+    p16 = joinpath(tempdir(), randstring(rand(4:32)))
+    p48 = joinpath(tempdir(), randstring(rand(4:32)))
+
     rm(p16mono, force=true, recursive=true)
     rm(p16, force=true, recursive=true)
     rm(p48, force=true, recursive=true)
@@ -54,7 +55,7 @@ function fragmentation(path::String, block::Float64)
 
     DATA.resample(p16, p48, 48000)
     rm(p16, force=true, recursive=true)
-    decomp
+    (decomp, p16mono, p48)
 end
 
 
@@ -90,7 +91,7 @@ end
 
 
 
-function label(dp::Dict{String,Array{String,1}})
+function label(dp::Dict{String,Array{String,1}}, p16, p48)
     
     nn = FORWARD.TF{Float32}("D:\\5-Workspace\\1-Model\\20180105\\model-20180105.mat")
     μ = HDF5.h5read("D:\\5-Workspace\\1-Model\\20180105\\stat.h5", "mu")
@@ -107,8 +108,8 @@ function label(dp::Dict{String,Array{String,1}})
         return state_play(clip, depth)
     end
 
-    p16 = joinpath(tempdir(), "QuickAnno16mono")
-    p48 = joinpath(tempdir(), "QuickAnno48")
+    # p16 = joinpath(tempdir(), "QuickAnno16mono")
+    # p48 = joinpath(tempdir(), "QuickAnno48")
 
     # priority via vad
     dpp = Dict{String,Array{Tuple{String,Float64},1}}()
@@ -176,13 +177,16 @@ function quickanno(path::String, block::Float64)
     info("press any key to continue...")
     cmd = lowercase(readline(STDIN))
 
-    dp = fragmentation(path, block)
-    dpp = label(dp)
+    dp,path16,path48 = fragmentation(path, block)
+    dpp = label(dp, path16, path48)
     dst = joinpath(path,"nospeech")
     mkpath(dst)
     for i in keys(dpp)
         mv(joinpath(path,i), joinpath(dst,i), remove_destination=true)
     end
+
+    rm(path16, force=true, recursive=true)
+    rm(path48, force=true, recursive=true)
     nothing
 end
 
